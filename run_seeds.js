@@ -1,0 +1,48 @@
+const { Client } = require('pg');
+const fs = require('fs');
+const path = require('path');
+require('dotenv').config({ path: '.env.local' });
+
+async function runScripts() {
+    if (!process.env.DATABASE_URL) {
+        console.error('❌ DATABASE_URL not found in .env.local');
+        process.exit(1);
+    }
+
+    const client = new Client({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    });
+
+    try {
+        console.log('🔌 Connecting to database...');
+        await client.connect();
+        console.log('✅ Connected!');
+
+        const scripts = [
+            'cleanup_duplicates.sql',
+            'seed_options_final_missing.sql'
+        ];
+
+        for (const scriptName of scripts) {
+            const scriptPath = path.join(__dirname, scriptName);
+            if (fs.existsSync(scriptPath)) {
+                console.log(`\n📜 Running ${scriptName}...`);
+                const sql = fs.readFileSync(scriptPath, 'utf8');
+                await client.query(sql);
+                console.log(`✅ ${scriptName} executed successfully!`);
+            } else {
+                console.error(`⚠️ File not found: ${scriptName}`);
+            }
+        }
+
+        console.log('\n✨ All scripts executed successfully!');
+
+    } catch (err) {
+        console.error('\n❌ Error executing scripts:', err);
+    } finally {
+        await client.end();
+    }
+}
+
+runScripts();
