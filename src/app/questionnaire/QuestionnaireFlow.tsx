@@ -25,7 +25,7 @@ export default function QuestionnaireFlow() {
     const [questionsC, setQuestionsC] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Matches state (Moved to top level)
+    // Matches state
     const [matches, setMatches] = useState<any[]>([]);
     const [calculating, setCalculating] = useState(false);
 
@@ -35,8 +35,9 @@ export default function QuestionnaireFlow() {
             return;
         }
 
-        async function loadQuestions() {
+        async function loadData() {
             try {
+                // 1. Load Questions
                 const [qA, qB, qC] = await Promise.all([
                     questionService.fetchQuestionsByType('A'),
                     questionService.fetchQuestionsByType('B'),
@@ -45,19 +46,45 @@ export default function QuestionnaireFlow() {
                 setQuestionsA(qA);
                 setQuestionsB(qB);
                 setQuestionsC(qC);
+
+                // 2. Load User Answers to restore progress
+                if (user) {
+                    const { data: userAnswers } = await answerService.getUserAnswers(user.id);
+                    if (userAnswers) {
+                        const answersMap: Record<number, string> = {};
+                        userAnswers.forEach((ans: any) => {
+                            answersMap[ans.question_id] = 'ANSWERED';
+                        });
+                        setAnswers(answersMap);
+
+                        // Determine phase and index
+                        const countA = qA.filter(q => answersMap[q.id]).length;
+                        const countB = qB.filter(q => answersMap[q.id]).length;
+
+                        if (countA < qA.length) {
+                            setPhase('A');
+                            setCurrentQuestionIndex(countA);
+                        } else if (countB < qB.length) {
+                            setPhase('B');
+                            setCurrentQuestionIndex(countB);
+                        } else {
+                            setPhase('MATCH');
+                        }
+                    }
+                }
             } catch (error) {
-                console.error('Failed to load questions', error);
+                console.error('Failed to load data', error);
             } finally {
                 setLoading(false);
             }
         }
 
         if (user) {
-            loadQuestions();
+            loadData();
         }
     }, [user, authLoading, router]);
 
-    // Matching effect (Moved to top level)
+    // Matching effect
     useEffect(() => {
         if (phase === 'MATCH' && user) {
             setCalculating(true);
@@ -87,7 +114,6 @@ export default function QuestionnaireFlow() {
             await answerService.saveAnswer(user.id, currentQuestion.id, optionId);
         } catch (error) {
             console.error('Failed to save answer', error);
-            // Handle error (maybe show toast)
         }
 
         if (currentQuestionIndex < currentQuestions.length - 1) {
@@ -98,10 +124,6 @@ export default function QuestionnaireFlow() {
                 setPhase('PREVIEW');
             } else if (phase === 'B') {
                 setPhase('MATCH');
-                // Trigger matching
-                // In a real app, this might be a background job or a separate API call
-                // For now, we just let the UI know we are ready, 
-                // the MATCH phase component could trigger the fetch.
             }
         }
     };

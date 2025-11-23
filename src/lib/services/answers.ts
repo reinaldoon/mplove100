@@ -36,5 +36,12 @@ export const answerService = {
             console.error('Error saving bulk answers:', error);
             throw error;
         }
+    },
+
+    async getUserAnswers(userId: string) {
+        return await supabase
+            .from('user_answers')
+            .select('*')
+            .eq('user_id', userId);
     }
 };
