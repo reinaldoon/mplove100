@@ -25,6 +25,10 @@ export default function QuestionnaireFlow() {
     const [questionsC, setQuestionsC] = useState<Question[]>([]);
     const [loading, setLoading] = useState(true);
 
+    // Matches state (Moved to top level)
+    const [matches, setMatches] = useState<any[]>([]);
+    const [calculating, setCalculating] = useState(false);
+
     useEffect(() => {
         if (!authLoading && !user) {
             router.push('/login');
@@ -52,6 +56,18 @@ export default function QuestionnaireFlow() {
             loadQuestions();
         }
     }, [user, authLoading, router]);
+
+    // Matching effect (Moved to top level)
+    useEffect(() => {
+        if (phase === 'MATCH' && user) {
+            setCalculating(true);
+            import('@/lib/services/matching').then(async ({ matchingService }) => {
+                const results = await matchingService.findMatches(user.id);
+                setMatches(results);
+                setCalculating(false);
+            });
+        }
+    }, [phase, user]);
 
     const currentQuestions = phase === 'A' ? questionsA : phase === 'B' ? questionsB : questionsC;
     const currentQuestion = currentQuestions[currentQuestionIndex];
@@ -123,21 +139,6 @@ export default function QuestionnaireFlow() {
             </div>
         );
     }
-
-    const [matches, setMatches] = useState<any[]>([]);
-    const [calculating, setCalculating] = useState(false);
-
-    useEffect(() => {
-        if (phase === 'MATCH' && user) {
-            setCalculating(true);
-            // Import dynamically to avoid cycle or just use the imported service
-            import('@/lib/services/matching').then(async ({ matchingService }) => {
-                const results = await matchingService.findMatches(user.id);
-                setMatches(results);
-                setCalculating(false);
-            });
-        }
-    }, [phase, user]);
 
     if (phase === 'MATCH') {
         return (
