@@ -29,6 +29,21 @@ export default function QuestionnaireFlow() {
     const [matches, setMatches] = useState<any[]>([]);
     const [calculating, setCalculating] = useState(false);
 
+    // Load from LocalStorage on mount for instant feedback
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedAnswers = localStorage.getItem('mplove_answers');
+            if (savedAnswers) {
+                try {
+                    const parsed = JSON.parse(savedAnswers);
+                    setAnswers(parsed);
+                } catch (e) {
+                    console.error('Failed to parse local answers', e);
+                }
+            }
+        }
+    }, []);
+
     useEffect(() => {
         if (!authLoading && !user) {
             router.push('/login');
@@ -47,7 +62,7 @@ export default function QuestionnaireFlow() {
                 setQuestionsB(qB);
                 setQuestionsC(qC);
 
-                // 2. Load User Answers to restore progress
+                // 2. Load User Answers to restore progress (DB is source of truth)
                 if (user) {
                     const { data: userAnswers } = await answerService.getUserAnswers(user.id);
                     if (userAnswers) {
@@ -55,7 +70,14 @@ export default function QuestionnaireFlow() {
                         userAnswers.forEach((ans: any) => {
                             answersMap[ans.question_id] = 'ANSWERED';
                         });
-                        setAnswers(answersMap);
+
+                        // Merge with local storage (DB wins if conflict, but local keeps unsaved ones)
+                        setAnswers(prev => {
+                            const merged = { ...prev, ...answersMap };
+                            // Update local storage with merged data
+                            localStorage.setItem('mplove_answers', JSON.stringify(merged));
+                            return merged;
+                        });
 
                         // Determine phase and index
                         const countA = qA.filter(q => answersMap[q.id]).length;
@@ -107,7 +129,9 @@ export default function QuestionnaireFlow() {
         if (!user) return;
 
         // Optimistic update
-        setAnswers(prev => ({ ...prev, [currentQuestion.id]: valueCode }));
+        const newAnswers = { ...answers, [currentQuestion.id]: valueCode };
+        setAnswers(newAnswers);
+        localStorage.setItem('mplove_answers', JSON.stringify(newAnswers));
 
         // Save to DB
         try {
@@ -125,6 +149,16 @@ export default function QuestionnaireFlow() {
             } else if (phase === 'B') {
                 setPhase('MATCH');
             }
+        }
+    };
+
+    const handleBack = () => {
+        if (currentQuestionIndex > 0) {
+            setCurrentQuestionIndex(prev => prev - 1);
+        } else if (phase === 'B') {
+            // Go back to Preview or last question of A? 
+            // Usually Preview is a transition screen, so maybe back to Preview
+            setPhase('PREVIEW');
         }
     };
 
@@ -151,12 +185,20 @@ export default function QuestionnaireFlow() {
                         Agora, para calcular a compatibilidade real (Expectativa vs Realidade), precisamos conhecer <strong>VOCÊ</strong>.
                     </p>
 
-                    <button
-                        onClick={() => { setPhase('B'); setCurrentQuestionIndex(0); }}
-                        className="bg-white text-black font-bold py-4 px-8 rounded-full hover:bg-gray-200 transition-colors"
-                    >
-                        Responder Sobre Mim
-                    </button>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => setPhase('A')} // Go back to check answers
+                            className="text-gray-400 hover:text-white underline"
+                        >
+                            Revisar Respostas
+                        </button>
+                        <button
+                            onClick={() => { setPhase('B'); setCurrentQuestionIndex(0); }}
+                            className="bg-white text-black font-bold py-4 px-8 rounded-full hover:bg-gray-200 transition-colors"
+                        >
+                            Responder Sobre Mim
+                        </button>
+                    </div>
                 </motion.div>
             </div>
         );
@@ -261,6 +303,18 @@ export default function QuestionnaireFlow() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* Back Button */}
+                        <div className="flex justify-start pt-4">
+                            <button
+                                onClick={handleBack}
+                                disabled={currentQuestionIndex === 0 && phase === 'A'}
+                                className={`text-sm text-gray-500 hover:text-white transition-colors ${currentQuestionIndex === 0 && phase === 'A' ? 'opacity-0 pointer-events-none' : ''}`}
+                            >
+                                ← Voltar
+                            </button>
+                        </div>
+
                     </motion.div>
                 </AnimatePresence>
             </div>
