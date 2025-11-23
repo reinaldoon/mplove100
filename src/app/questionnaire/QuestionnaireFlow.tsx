@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { questionService } from '@/lib/services/questions';
 import { answerService } from '@/lib/services/answers';
+import { profileService } from '@/lib/services/profile';
 import { Question } from '@/types';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
@@ -145,9 +146,16 @@ export default function QuestionnaireFlow() {
         setAnswers(newAnswers);
         localStorage.setItem('mplove_answers', JSON.stringify(newAnswers));
 
-        // Save to DB
+        // Save to DB (with validation & fallback)
         try {
-            await answerService.saveAnswer(user.id, currentQuestion.id, optionId);
+            const saved = await answerService.saveAnswer(user.id, currentQuestion.id, optionId);
+            if (!saved) {
+                console.warn('Answer not saved to DB, keeping local version');
+            }
+            // Update gender in profile when answering question 101 (self gender)
+            if (currentQuestion.question_order === 101) {
+                await profileService.updateProfile(user.id, { gender: valueCode });
+            }
         } catch (error) {
             console.error('Failed to save answer', error);
         }
