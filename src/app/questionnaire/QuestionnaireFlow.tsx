@@ -65,33 +65,45 @@ export default function QuestionnaireFlow() {
                 // 2. Load User Answers to restore progress (DB is source of truth)
                 if (user) {
                     const { data: userAnswers } = await answerService.getUserAnswers(user.id);
-                    if (userAnswers) {
-                        const answersMap: Record<number, string> = {};
-                        userAnswers.forEach((ans: any) => {
-                            answersMap[ans.question_id] = 'ANSWERED';
-                        });
 
-                        // Merge with local storage (DB wins if conflict, but local keeps unsaved ones)
-                        setAnswers(prev => {
-                            const merged = { ...prev, ...answersMap };
-                            // Update local storage with merged data
-                            localStorage.setItem('mplove_answers', JSON.stringify(merged));
-                            return merged;
-                        });
-
-                        // Determine phase and index
-                        const countA = qA.filter(q => answersMap[q.id]).length;
-                        const countB = qB.filter(q => answersMap[q.id]).length;
-
-                        if (countA < qA.length) {
-                            setPhase('A');
-                            setCurrentQuestionIndex(countA);
-                        } else if (countB < qB.length) {
-                            setPhase('B');
-                            setCurrentQuestionIndex(countB);
-                        } else {
-                            setPhase('MATCH');
+                    // Get local answers to ensure we don't lose progress if DB save failed
+                    let localAnswers: Record<number, string> = {};
+                    if (typeof window !== 'undefined') {
+                        try {
+                            localAnswers = JSON.parse(localStorage.getItem('mplove_answers') || '{}');
+                        } catch (e) {
+                            console.error('Error parsing local storage', e);
                         }
+                    }
+
+                    const dbAnswersMap: Record<number, string> = {};
+                    if (userAnswers) {
+                        userAnswers.forEach((ans: any) => {
+                            dbAnswersMap[ans.question_id] = 'ANSWERED';
+                        });
+                    }
+
+                    // Merge: DB overwrites Local (if we want to enforce server state), 
+                    // BUT for "unsaved" progress, we want Local to fill gaps.
+                    // Let's trust Local for "latest" state if DB is missing it.
+                    const mergedAnswers = { ...localAnswers, ...dbAnswersMap };
+
+                    setAnswers(mergedAnswers);
+                    // Update local storage to match this merged state
+                    localStorage.setItem('mplove_answers', JSON.stringify(mergedAnswers));
+
+                    // Determine phase and index based on MERGED answers
+                    const countA = qA.filter(q => mergedAnswers[q.id]).length;
+                    const countB = qB.filter(q => mergedAnswers[q.id]).length;
+
+                    if (countA < qA.length) {
+                        setPhase('A');
+                        setCurrentQuestionIndex(countA);
+                    } else if (countB < qB.length) {
+                        setPhase('B');
+                        setCurrentQuestionIndex(countB);
+                    } else {
+                        setPhase('MATCH');
                     }
                 }
             } catch (error) {
